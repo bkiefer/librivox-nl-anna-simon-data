@@ -1,0 +1,48 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'org.yaml:snakeyaml:1.16'
+    }
+}
+
+plugins {
+    id "de.undercouch.download" version "3.0.0"
+}
+
+import org.yaml.snakeyaml.*
+import de.undercouch.gradle.tasks.download.Download
+
+ext {
+    yamlFile = file('chapters.yaml')
+}
+
+task download(type: Download) {
+    inputs.files yamlFile
+    src(new Yaml().load(yamlFile.text).collect { chapter ->
+        "http://www.archive.org/download/nagelaten_bekentenis_0806_librivox/${chapter.filename}.mp3"
+    })
+    dest "$buildDir/download"
+    overwrite false
+}
+
+task splitAudio {
+    def wavDir = file("$buildDir/wav")
+    inputs.files yamlFile, download
+    outputs.dir wavDir
+    doFirst {
+        wavDir.mkdirs()
+    }
+    doLast {
+        new Yaml().load(yamlFile.text).eachWithIndex { chapter, c ->
+            def mp3File = file("$buildDir/${chapter.filename}.mp3")
+            chapter.utterances.eachWithIndex { utterance, u ->
+                def wavFile = file("$wavDir/${chapter.filename}_${(c + 1 as String).padLeft(2, '0')}_${(u + 1 as String).padLeft(3, '0')}.wav")
+                exec {
+                    commandLine 'sox', mp3File, wavFile, 'trim', utterance.start, "=$utterance.end", 'rate', 16000
+                }
+            }
+        }
+    }
+}
